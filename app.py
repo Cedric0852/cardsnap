@@ -137,13 +137,14 @@ elif page == "Card Snap History":
     st.title("Card Snap History")
     search_keywords = st.text_input("Search", "")
     if search_keywords:
-        card_snaps = search_card_snaps(str(search_keywords))
+        card_snaps = search_card_snaps(search_keywords)
     else:
         card_snaps = get_card_snaps()
 
-    for card_snap in card_snaps:
+    for i, card_snap in enumerate(card_snaps):
         st.subheader(f"{card_snap.event_name if card_snap.event_name else 'No Event Name'} - {card_snap.timestamp.strftime('%Y-%m-%d %H:%M:%S')}")
-        st.text_area("Detected Text", value=card_snap.detected_text, height=150, max_chars=None, key=None)
+        unique_key = f"card_snap_text_area_{i}"
+        st.text_area("Detected Text", value=card_snap.detected_text, height=150, max_chars=None, key=unique_key)
         st.write("---")
     if st.button("Export to Excel"):
       card_snaps = get_card_snaps()
