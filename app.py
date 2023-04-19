@@ -109,10 +109,10 @@ page = st.sidebar.radio("Go to", ["Home", "Card Snap History"])
 #Home page
 if page == "Home":
   # Title
-  st.title("Business Card Digitizer")
+  st.title("Business Card Digitizer ,  CARDSNAP")
 
   # Instructions
-  st.write("Upload an image of a business card to detect text.")
+  st.write("Upload or take a picture  of a business card.")
 
   # Capture or upload an image
   uploaded_file = st.file_uploader("Choose an image file", type=["jpg", "jpeg", "png"])
