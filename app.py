@@ -59,7 +59,12 @@ def save_to_db(event_name, detected_text, timestamp):
 # Add a function to retrieve records from the database
 def get_card_snaps():
     return session.query(CardSnap).order_by(CardSnap.timestamp.desc()).all()
-
+# Add this function to delete a card_snap entry by ID
+def delete_card_snap(card_snap_id):
+    card_snap = session.query(CardSnap).filter(CardSnap.id == card_snap_id).first()
+    if card_snap:
+        session.delete(card_snap)
+        session.commit()
 # Add a function to filter records based on search keywords
 def search_card_snaps(search_keywords):
     keywords = f"%{search_keywords}%"
@@ -145,7 +150,12 @@ elif page == "Card Snap History":
         st.subheader(f"{card_snap.event_name if card_snap.event_name else 'No Event Name'} - {card_snap.timestamp.strftime('%Y-%m-%d %H:%M:%S')}")
         unique_key = f"card_snap_text_area_{i}"
         st.text_area("Detected Text", value=card_snap.detected_text, height=150, max_chars=None, key=unique_key)
-        st.write("---")
+        if st.button(f"Delete Entry {i}"):
+            delete_card_snap(card_snap.id)
+            st.success(f"Deleted entry: {card_snap.event_name if card_snap.event_name else 'No Event Name'} - {card_snap.timestamp.strftime('%Y-%m-%d %H:%M:%S')}")
+
+            st.write("---")
+        
     if st.button("Export to Excel"):
       card_snaps = get_card_snaps()
       df = card_snaps_to_dataframe(card_snaps)
