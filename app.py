@@ -150,7 +150,8 @@ elif page == "Card Snap History":
         st.subheader(f"{card_snap.event_name if card_snap.event_name else 'No Event Name'} - {card_snap.timestamp.strftime('%Y-%m-%d %H:%M:%S')}")
         unique_key = f"card_snap_text_area_{i}"
         st.text_area("Detected Text", value=card_snap.detected_text, height=150, max_chars=None, key=unique_key)
-        if st.button(f"Delete Entry {i}"):
+        delete_button_label = "Delete"
+        if st.button(delete_button_label, key=f"delete_button_{i}"):
             delete_card_snap(card_snap.id)
             st.success(f"Deleted entry: {card_snap.event_name if card_snap.event_name else 'No Event Name'} - {card_snap.timestamp.strftime('%Y-%m-%d %H:%M:%S')}")
 
