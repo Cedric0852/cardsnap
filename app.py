@@ -12,6 +12,8 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import or_
 import streamlit_ace as st_ace
+from PIL import Image
+import pytesseract
 API_KEY = st.secrets["key"]
 #database connection 
 # Set up the SQLite database
@@ -30,27 +32,38 @@ Session = sessionmaker(bind=engine)
 session = Session()
 #TExt detection function
 
-def detect_text(image):
-    url = "https://vision.googleapis.com/v1/images:annotate?key=" + API_KEY
-    headers = {'Content-Type': 'application/json'}
-    image_content = base64.b64encode(image).decode('UTF-8')
-    data = {
-      "requests": [
-        {
-          "image": {
-            "content": image_content
-          },
-          "features": [
-            {
-              "type": "DOCUMENT_TEXT_DETECTION"
-            }
-          ]
-        }
-      ]
-    }
-    response = requests.post(url, headers=headers, json=data)
-    return response.json()
+# def detect_text(image):
+#     url = "https://vision.googleapis.com/v1/images:annotate?key=" + API_KEY
+#     headers = {'Content-Type': 'application/json'}
+#     image_content = base64.b64encode(image).decode('UTF-8')
+#     data = {
+#       "requests": [
+#         {
+#           "image": {
+#             "content": image_content
+#           },
+#           "features": [
+#             {
+#               "type": "DOCUMENT_TEXT_DETECTION"
+#             }
+#           ]
+#         }
+#       ]
+#     }
+#     response = requests.post(url, headers=headers, json=data)
+#     return response.json()
 # Add a function to save detected text to the database
+
+
+# Configure pytesseract path if needed (especially on Windows)
+pytesseract.pytesseract.tesseract_cmd = r'C:\\Program Files\\Tesseract-OCR\\tesseract.exe'
+
+def detect_text(image):
+    # Convert image bytes to an image object
+    image = Image.open(io.BytesIO(image))
+    # Use Tesseract to do OCR on the image
+    text = pytesseract.image_to_string(image, lang='eng')
+    return text
 def save_to_db(event_name, detected_text, timestamp):
     card_snap = CardSnap(event_name=event_name, detected_text=detected_text, timestamp=timestamp)
     session.add(card_snap)
@@ -131,13 +144,12 @@ if page == "Home":
       event_name = st.text_input("Event Name (optional)")
 
       if st.button("Detect Text"):
-        result = detect_text(image_bytes)
-        full_text = result['responses'][0]['fullTextAnnotation']['text']
-        st.write("Detected Text:")
-        st.markdown(f"```\n{full_text}\n```")
-        timestamp = datetime.utcnow()
-        save_to_db(event_name, full_text, timestamp)
-        st.success("Text saved successfully!")
+            detected_text = detect_text(image_bytes)
+            st.write("Detected Text:")
+            st.markdown(f"```\n{detected_text}\n```")
+            timestamp = datetime.utcnow()
+            save_to_db(event_name, detected_text, timestamp)
+            st.success("Text saved successfully!")
 elif page == "Card Snap History":
     st.title("Card Snap History")
     search_keywords = st.text_input("Search", "")
