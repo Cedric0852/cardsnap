@@ -10,7 +10,13 @@ from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, o
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import pytesseract
-
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, relationship
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, relationship
+from datetime import datetime
 # Database connection
 engine = create_engine("sqlite:///cardsnap.db")
 Base = declarative_base()
@@ -22,6 +28,18 @@ class CardSnap(Base):
     detected_text = Column(Text, nullable=False)
     timestamp = Column(DateTime, nullable=False)
 
+class Request(Base):
+    __tablename__ = "requests"
+    id = Column(Integer, primary_key=True)
+    card_snap_id = Column(Integer, ForeignKey('cardsnap.id'))
+    action = Column(String, nullable=False)  # "update" or "delete"
+    new_text = Column(Text, nullable=True)  # Only for update requests
+    status = Column(String, default="pending")  # "pending", "approved", "declined"
+    requester = Column(String, nullable=False)  # Username of the requester
+    timestamp = Column(DateTime, default=datetime.utcnow)  # Timestamp of the request
+    card_snap = relationship("CardSnap", back_populates="requests")
+
+CardSnap.requests = relationship("Request", order_by=Request.id, back_populates="card_snap")
 Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 session = Session()
@@ -187,10 +205,22 @@ def card_snap_history_page():
         st.subheader(f"{card_snap.event_name if card_snap.event_name else 'No Event Name'} - {card_snap.timestamp.strftime('%Y-%m-%d %H:%M:%S')}")
         unique_key = f"card_snap_text_area_{i}"
         st.text_area("Detected Text", value=card_snap.detected_text, height=150, max_chars=None, key=unique_key)
-        if st.button("Delete", key=f"delete_button_{i}"):
-            delete_card_snap(card_snap.id)
-            st.success(f"Deleted entry: {card_snap.event_name if card_snap.event_name else 'No Event Name'} - {card_snap.timestamp.strftime('%Y-%m-%d %H:%M:%S')}")
-            st.experimental_rerun()
+
+        if st.button("Request Delete", key=f"request_delete_button_{i}"):
+            username = st.session_state["username"]
+            request = Request(card_snap_id=card_snap.id, action="delete", requester=username)
+            session.add(request)
+            session.commit()
+            st.success(f"Delete request for {card_snap.event_name if card_snap.event_name else 'No Event Name'} sent for approval.")
+
+        if st.button("Request Update", key=f"request_update_button_{i}"):
+            new_text = st.text_area("New Detected Text", height=150, max_chars=None, key=f"new_text_area_{i}")
+            if new_text:
+                username = st.session_state["username"]
+                request = Request(card_snap_id=card_snap.id, action="update", new_text=new_text, requester=username)
+                session.add(request)
+                session.commit()
+                st.success(f"Update request for {card_snap.event_name if card_snap.event_name else 'No Event Name'} sent for approval.")
 
     if st.button("Export to Excel"):
         card_snaps = get_card_snaps()
@@ -199,6 +229,7 @@ def card_snap_history_page():
         b64 = base64.b64encode(excel_file).decode()
         href = f'<a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" download="card_snap_history.xlsx">Download Card Snap History as Excel</a>'
         st.markdown(href, unsafe_allow_html=True)
+
 
 # User Management page (Admin only)
 def user_management_page():
@@ -217,15 +248,23 @@ def user_management_page():
         else:
             st.error("Please provide both username and password.")
 
-    # Read users
+    # Read users with refresh button
     st.subheader("User List")
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute("SELECT username, role FROM users")
-    users = c.fetchall()
-    conn.close()
-    for user in users:
-        st.write(f"Username: {user[0]}, Role: {user[1]}")
+    if st.button("Refresh User List"):
+        st.session_state.refresh = True
+
+    if 'refresh' not in st.session_state:
+        st.session_state.refresh = True
+
+    if st.session_state.refresh:
+        conn = sqlite3.connect('users.db')
+        c = conn.cursor()
+        c.execute("SELECT username, role FROM users")
+        users = c.fetchall()
+        conn.close()
+        for user in users:
+            st.write(f"Username: {user[0]}, Role: {user[1]}")
+        st.session_state.refresh = False
 
     # Update user role form
     st.subheader("Update User Role")
@@ -255,7 +294,43 @@ def user_management_page():
             st.success(f"Deleted user {delete_username}")
         else:
             st.error("Please provide the username.")
+# Admin Request Management page
+def request_management_page():
+    st.header("Request Management")
+    st.write("Manage user requests here.")
 
+    requests = session.query(Request).filter(Request.status == "pending").all()
+
+    for i, request in enumerate(requests):
+        card_snap = session.query(CardSnap).filter(CardSnap.id == request.card_snap_id).first()
+        st.subheader(f"Request {i+1}")
+        st.write(f"Action: {request.action.capitalize()}")
+        st.write(f"Card Snap ID: {request.card_snap_id}")
+        st.write(f"Event Name: {card_snap.event_name}")
+        st.write(f"Detected Text: {card_snap.detected_text}")
+        st.write(f"Requester: {request.requester}")
+        st.write(f"Request Timestamp: {request.timestamp.strftime('%Y-%m-%d %H:%M:%S')}")
+        if request.action == "update":
+            st.write(f"New Text: {request.new_text}")
+
+        if st.button("Approve", key=f"approve_button_{i}"):
+            if request.action == "delete":
+                session.delete(card_snap)
+            elif request.action == "update":
+                card_snap.detected_text = request.new_text
+                session.add(card_snap)
+            request.status = "approved"
+            session.add(request)
+            session.commit()
+            st.success(f"Request {i+1} approved and processed.")
+            st.experimental_rerun()
+
+        if st.button("Decline", key=f"decline_button_{i}"):
+            request.status = "declined"
+            session.add(request)
+            session.commit()
+            st.success(f"Request {i+1} declined.")
+            st.experimental_rerun()
 # Main application logic
 if st.session_state.authentication_status:
     st.sidebar.title("Navigation")
@@ -263,13 +338,15 @@ if st.session_state.authentication_status:
         logout()
 
     if st.session_state.role == "Admin":
-        page = st.sidebar.radio("Go to", ["Home", "Card Snap History", "Manage Users"])
+        page = st.sidebar.radio("Go to", ["Home", "Card Snap History", "Manage Users","Requests"])
         if page == "Home":
             home_page()
         elif page == "Card Snap History":
             card_snap_history_page()
         elif page == "Manage Users":
             user_management_page()
+        elif page == "Requests":
+            request_management_page()
     else:
         page = st.sidebar.radio("Go to", ["Home", "Card Snap History"])
         if page == "Home":
