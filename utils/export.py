@@ -143,12 +143,30 @@ class Exporter:
     def business_card_to_dict(card: BusinessCard, company: Company = None) -> Dict[str, Any]:
         """Convert business card to dictionary format for export."""
         data = {
+            'id': card.id,
             'Contact Name': card.contact_name,
             'Position': card.position,
             'Email': card.email,
             'Phone': card.phone,
+            'Mobile': card.mobile,
+            'Fax': card.fax,
+            'Website': card.website,
+            'Street Address': card.street_address,
+            'City': card.city,
+            'State': card.state,
+            'Postal Code': card.postal_code,
+            'Country': card.country,
+            'Department': card.department,
+            'LinkedIn': card.social_linkedin,
+            'Twitter': card.social_twitter,
+            'Facebook': card.social_facebook,
+            'Notes': card.notes,
             'Event': card.event_name,
-            'Created At': card.created_at.strftime('%Y-%m-%d %H:%M:%S')
+            'Detected Text': card.detected_text,
+            'QR Code Data': card.qr_code_data,
+            'Created At': card.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+            'Updated At': card.updated_at.strftime('%Y-%m-%d %H:%M:%S'),
+            'Parsed Data': card.parsed_data
         }
         
         if company:
@@ -156,9 +174,54 @@ class Exporter:
                 'Company': company.name,
                 'Company Email': company.email,
                 'Company Phone': company.contact_primary,
-                'Website': company.website,
-                'Address': f"{company.street_address}, {company.city}, {company.state} {company.postal_code}, {company.country}".strip(", "),
-                'Industry': company.industry
+                'Company Secondary Phone': company.contact_secondary,
+                'Company Website': company.website,
+                'Company Address': f"{company.street_address}, {company.city}, {company.state} {company.postal_code}, {company.country}".strip(", "),
+                'Company Industry': company.industry,
+                'Company Registration': company.registration_number,
+                'Company LinkedIn': company.social_linkedin,
+                'Company Twitter': company.social_twitter,
+                'Company Facebook': company.social_facebook
+            })
+        else:
+            # Add null values for company fields when no company is provided
+            data.update({
+                'Company': None,
+                'Company Email': None,
+                'Company Phone': None,
+                'Company Secondary Phone': None,
+                'Company Website': None,
+                'Company Address': None,
+                'Company Industry': None,
+                'Company Registration': None,
+                'Company LinkedIn': None,
+                'Company Twitter': None,
+                'Company Facebook': None
             })
         
         return data 
+    
+    @staticmethod
+    def company_to_dict(company: Company) -> Dict[str, Any]:
+        """Convert company to dictionary format for export."""
+        return {
+            'id': company.id,
+            'Name': company.name,
+            'Primary Contact': company.contact_primary,
+            'Secondary Contact': company.contact_secondary,
+            'Email': company.email,
+            'Website': company.website,
+            'Street Address': company.street_address,
+            'City': company.city,
+            'State': company.state,
+            'Postal Code': company.postal_code,
+            'Country': company.country,
+            'Industry': company.industry,
+            'Registration Number': company.registration_number,
+            'LinkedIn': company.social_linkedin,
+            'Twitter': company.social_twitter,
+            'Facebook': company.social_facebook,
+            'QR Code Data': company.qr_code_data,
+            'Created At': company.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+            'Updated At': company.updated_at.strftime('%Y-%m-%d %H:%M:%S')
+        } 
