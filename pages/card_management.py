@@ -1,6 +1,6 @@
 import streamlit as st
 from database.db import db
-from database.models import BusinessCard, Company, AuditLog
+from database.models import BusinessCard, Company
 from utils.scanner import Scanner
 from utils.auth import login_required, role_required
 from datetime import datetime
@@ -35,6 +35,8 @@ def render_card_management():
         event_name = None
         
         if uploaded_file is not None:
+            # Initialize raw_text to an empty string to avoid referencing before assignment
+            raw_text = ""
             # Display the uploaded image
             image = Image.open(uploaded_file)
             st.image(image, caption='Uploaded Business Card', use_container_width=True)
@@ -73,6 +75,18 @@ def render_card_management():
         if st.button("Save Card"):
             try:
                 with db.get_session() as session:
+                    # Ensure raw_text is extracted if not already done
+                    if uploaded_file:
+                        try:
+                            raw_text
+                        except NameError:
+                            raw_text = ""
+                        if raw_text == "":
+                            raw_text, parsed_info = Scanner.extract_text_from_image(uploaded_file.getvalue())
+                    else:
+                        raw_text = ""
+                        parsed_info = None
+                    
                     # Create or get company if company name is provided
                     company_id = None
                     if company_name:
@@ -87,7 +101,7 @@ def render_card_management():
                             session.flush()  # Get company ID
                         company_id = company.id
                     
-                    # Create new business card
+                    # Create new business card with raw detected text and parsed data
                     card = BusinessCard(
                         company_id=company_id,
                         contact_name=contact_name if contact_name else None,
@@ -98,13 +112,13 @@ def render_card_management():
                         event_name=event_name if event_name else None,
                         created_by_id=st.session_state.user_id,
                         created_at=datetime.utcnow(),
-                        detected_text=raw_text if 'raw_text' in locals() else None,
+                        detected_text=raw_text,
                         parsed_data=parsed_info if 'parsed_info' in locals() else None,
                         qr_code_data=None  # Will be set below if QR code is detected
                     )
                     
                     # Extract additional information from parsed_info if available
-                    if 'parsed_info' in locals():
+                    if 'parsed_info' in locals() and parsed_info:
                         card.mobile = parsed_info.get('mobile')
                         card.fax = parsed_info.get('fax')
                         card.street_address = parsed_info.get('address')
@@ -117,7 +131,7 @@ def render_card_management():
                         card.social_twitter = parsed_info.get('twitter')
                         card.social_facebook = parsed_info.get('facebook')
                         card.notes = parsed_info.get('notes')
-
+                    
                     if uploaded_file:
                         # Save image
                         img_byte_arr = uploaded_file.getvalue()
@@ -135,18 +149,6 @@ def render_card_management():
                         card.image_path = image_path
                     
                     session.add(card)
-                    
-                    # Create audit log
-                    log = AuditLog(
-                        user_id=st.session_state.user_id,
-                        action="create_card",
-                        details={
-                            "company": company_name if company_name else "Unknown",
-                            "contact": contact_name if contact_name else "Unknown",
-                            "timestamp": datetime.utcnow().isoformat()
-                        }
-                    )
-                    session.add(log)
                     session.commit()
                     
                 st.success("Business card saved successfully!")
@@ -223,44 +225,25 @@ def render_card_management():
                         if card.company.website:
                             st.write(f"**Website:** {card.company.website}")
                     
-                    # Add View More Info button
-                    if st.button("View More Info", key=f"more_info_{card.id}"):
-                        st.markdown("##### Additional Contact Details")
-                        if card.mobile:
-                            st.write(f"**Mobile:** {card.mobile}")
-                        if card.fax:
-                            st.write(f"**Fax:** {card.fax}")
-                        if card.department:
-                            st.write(f"**Department:** {card.department}")
-                        
-                        st.markdown("##### Address Information")
-                        if any([card.street_address, card.city, card.state, card.postal_code, card.country]):
-                            if card.street_address:
-                                st.write(f"**Street:** {card.street_address}")
-                            if card.city:
-                                st.write(f"**City:** {card.city}")
-                            if card.state:
-                                st.write(f"**State:** {card.state}")
-                            if card.postal_code:
-                                st.write(f"**Postal Code:** {card.postal_code}")
-                            if card.country:
-                                st.write(f"**Country:** {card.country}")
-                        
-                        st.markdown("##### Social Media")
-                        if card.social_linkedin:
-                            st.write(f"**LinkedIn:** {card.social_linkedin}")
-                        if card.social_twitter:
-                            st.write(f"**Twitter:** {card.social_twitter}")
-                        if card.social_facebook:
-                            st.write(f"**Facebook:** {card.social_facebook}")
-                        
-                        if card.notes:
-                            st.markdown("##### Notes")
-                            st.write(card.notes)
-                        
-                        if card.parsed_data:
-                            st.markdown("##### All Parsed Data")
-                            st.json(card.parsed_data)
+                    # Add View More Info button with toggle
+                    show_info = st.checkbox("View More Info", key=f"more_info_{card.id}")
+                    if show_info:
+                        st.markdown("##### Raw Detected Text")
+                        st.text_area("Raw Text", value=card.detected_text, height=300, key=f"raw_text_{card.id}", disabled=True)
+                        st.markdown("##### Card Details")
+                        card_details = {
+                            "id": card.id,
+                            "Company": card.company.name if card.company else None,
+                            "Contact Name": card.contact_name,
+                            "Position": card.position,
+                            "Email": card.email,
+                            "Phone": card.phone,
+                            "Website": card.website,
+                            "Event Name": card.event_name,
+                            "Created At": card.created_at.strftime('%Y-%m-%d %H:%M:%S') if card.created_at else None,
+                            "Parsed Data": card.parsed_data
+                        }
+                        st.json(card_details)
                     
                     if card.event_name:
                         st.write(f"**Event:** {card.event_name}")
@@ -272,18 +255,6 @@ def render_card_management():
                                 with db.get_session() as session:
                                     card_to_delete = session.query(BusinessCard).get(card.id)
                                     session.delete(card_to_delete)
-                                    
-                                    # Create audit log
-                                    log = AuditLog(
-                                        user_id=st.session_state.user_id,
-                                        action="delete_card",
-                                        details={
-                                            "company": company_name,
-                                            "contact": contact_name,
-                                            "timestamp": datetime.utcnow().isoformat()
-                                        }
-                                    )
-                                    session.add(log)
                                     session.commit()
                                 
                                 st.success("Card deleted successfully!")
@@ -292,11 +263,54 @@ def render_card_management():
                                 st.error(f"Error deleting card: {str(e)}")
                 
                 with col3:
-                    st.subheader("OCR Results")
-                    if card.detected_text:
-                        st.markdown("##### Raw Detected Text")
-                        st.code(card.detected_text)
+                    st.subheader("QR Codes")
                     
-                    if card.qr_code_data:
-                        st.markdown("##### QR Code Data")
-                        st.code(card.qr_code_data) 
+                    # Business Card QR Code from Raw Text
+                    if card.detected_text:
+                        try:
+                            qr_image_bytes, _ = Scanner.generate_qr_code({
+                                'raw_text': card.detected_text,
+                                'type': 'business_card'
+                            })
+                            st.image(qr_image_bytes, caption="Business Card QR Code", use_container_width=True)
+                            
+                            # Display raw text below QR code
+                            st.markdown("##### Raw Text Content")
+                            st.code(card.detected_text)
+                        except Exception as e:
+                            st.warning(f"Could not generate business card QR code: {str(e)}")
+                    
+                    # Company QR Code (if company exists)
+                    if card.company:
+                        company = card.company
+                        company_data = {
+                            'name': company.name,
+                            'email': company.email,
+                            'contact_primary': company.contact_primary,
+                            'contact_secondary': company.contact_secondary,
+                            'website': company.website,
+                            'street_address': company.street_address,
+                            'city': company.city,
+                            'state': company.state,
+                            'postal_code': company.postal_code,
+                            'country': company.country,
+                            'industry': company.industry,
+                            'registration_number': company.registration_number,
+                            'social_linkedin': company.social_linkedin,
+                            'social_twitter': company.social_twitter,
+                            'social_facebook': company.social_facebook,
+                            'type': 'company'
+                        }
+                        
+                        # Filter out None values
+                        company_data = {k: v for k, v in company_data.items() if v}
+                        
+                        try:
+                            qr_image_bytes, _ = Scanner.generate_qr_code(company_data)
+                            st.image(qr_image_bytes, caption="Company QR Code", use_container_width=True)
+                            
+                            # Display company info below QR code
+                            st.markdown("##### Company Information")
+                            st.json(company_data)
+                        except Exception as e:
+                            st.warning(f"Could not generate company QR code: {str(e)}")

@@ -157,12 +157,25 @@ class Scanner:
     @staticmethod
     def generate_qr_code(data: dict) -> tuple[bytes, str]:
         """
-        Generate QR code from business card data.
+        Generate QR code from business card or company data.
         Returns (qr_code_image_bytes, qr_code_data)
         """
         try:
-            # Create vCard format data
-            vcard_data = f"""BEGIN:VCARD
+            if data.get('type') == 'business_card' and 'raw_text' in data:
+                # For business cards with raw text, use the raw text directly
+                qr_data = data['raw_text']
+            elif data.get('type') == 'company':
+                # For company data, create a formatted string
+                company_info = []
+                for key, value in data.items():
+                    if key != 'type' and value:  # Skip 'type' field and None values
+                        # Convert key from snake_case to Title Case
+                        formatted_key = ' '.join(word.capitalize() for word in key.split('_'))
+                        company_info.append(f"{formatted_key}: {value}")
+                qr_data = '\n'.join(company_info)
+            else:
+                # For other cases, create vCard format
+                vcard_data = f"""BEGIN:VCARD
 VERSION:3.0
 FN:{data.get('name', '')}
 ORG:{data.get('company', '')}
@@ -171,6 +184,7 @@ TEL:{data.get('phone', '')}
 EMAIL:{data.get('email', '')}
 URL:{data.get('website', '')}
 END:VCARD"""
+                qr_data = vcard_data
             
             # Generate QR code
             qr = qrcode.QRCode(
@@ -179,7 +193,7 @@ END:VCARD"""
                 box_size=10,
                 border=4,
             )
-            qr.add_data(vcard_data)
+            qr.add_data(qr_data)
             qr.make(fit=True)
             
             # Create QR code image
@@ -190,7 +204,7 @@ END:VCARD"""
             qr_image.save(img_byte_arr, format='PNG')
             img_byte_arr = img_byte_arr.getvalue()
             
-            return img_byte_arr, vcard_data
+            return img_byte_arr, qr_data
             
         except Exception as e:
             raise Exception(f"Error generating QR code: {str(e)}")

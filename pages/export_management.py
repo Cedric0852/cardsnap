@@ -1,9 +1,9 @@
 import streamlit as st
 from database.db import db
-from database.models import BusinessCard, Company, ExportLog
+from database.models import BusinessCard, Company, ExportLog, User
 from utils.export import Exporter
 from utils.auth import login_required
-from datetime import datetime
+from datetime import datetime, date
 import io
 
 @login_required
@@ -34,8 +34,8 @@ def render_export_tab():
         first_card = session.query(BusinessCard).order_by(BusinessCard.created_at.asc()).first()
         last_card = session.query(BusinessCard).order_by(BusinessCard.created_at.desc()).first()
         
-        min_date = first_card.created_at if first_card else datetime.now()
-        max_date = last_card.created_at if last_card else datetime.now()
+        min_date = first_card.created_at.date() if first_card else date(2000, 1, 1)
+        max_date = last_card.created_at.date() if last_card else datetime.now().date()
     
     # Filters
     st.subheader("Filters")
@@ -175,10 +175,15 @@ def render_history_tab():
                     st.write(f"Records: {export.items_exported}")
                     st.write(f"Status: {export.status}")
                     
-                    # Get user info
+                    # Get user info for admin view
                     if st.session_state.user_role == "Admin":
-                        user = session.query(User).get(export.user_id)
-                        if user:
-                            st.write(f"Exported by: {user.username}")
+                        try:
+                            user = session.query(User).get(export.user_id)
+                            if user:
+                                st.write(f"Exported by: {user.username}")
+                            else:
+                                st.write("Exported by: Unknown User")
+                        except Exception:
+                            st.write("Exported by: Unknown User")
         else:
             st.info("No export history found.") 

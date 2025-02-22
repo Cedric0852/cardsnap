@@ -41,10 +41,10 @@ def create_admin_user(username: str, email: str, password: str) -> bool:
 def main():
     """Initialize the database and create the first admin user."""
     try:
-        # Initialize database
-        print("Initializing database...")
-        db.init_db()
-        print("Database initialized successfully.")
+        # Reset database
+        print("Resetting database...")
+        db.reset_db()
+        print("Database reset successfully.")
         
         # Check if admin user already exists
         with db.get_session() as session:

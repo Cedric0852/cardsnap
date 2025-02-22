@@ -1,6 +1,6 @@
 import streamlit as st
 from database.db import db
-from database.models import User, AuditLog
+from database.models import User
 from utils.auth import AuthManager, PasswordPolicy, login_required, role_required
 from datetime import datetime, timedelta
 
@@ -11,16 +11,13 @@ def render_user_management():
     st.title("User Management")
     
     # Create tabs for different functions
-    tab1, tab2, tab3 = st.tabs(["Add User", "Manage Users", "User Activity"])
+    tab1, tab2 = st.tabs(["Add User", "Manage Users"])
     
     with tab1:
         render_add_user_tab()
     
     with tab2:
         render_manage_users_tab()
-    
-    with tab3:
-        render_user_activity_tab()
 
 def render_add_user_tab():
     """Render the add user tab."""
@@ -75,18 +72,6 @@ def render_add_user_tab():
                         is_active=True
                     )
                     session.add(user)
-                    
-                    # Log user creation
-                    log = AuditLog(
-                        user_id=st.session_state.user_id,
-                        action="create_user",
-                        details={
-                            "created_user": username,
-                            "role": role,
-                            "timestamp": datetime.utcnow().isoformat()
-                        }
-                    )
-                    session.add(log)
                     session.commit()
                     
                     st.success("User created successfully!")
@@ -162,51 +147,4 @@ def render_manage_users_tab():
                             session.commit()
                             st.success(
                                 f"User {'deactivated' if not user.is_active else 'activated'} successfully!"
-                            )
-
-def render_user_activity_tab():
-    """Render the user activity tab."""
-    st.header("User Activity Logs")
-    
-    # Date range filter
-    col1, col2 = st.columns(2)
-    with col1:
-        start_date = st.date_input(
-            "Start Date",
-            datetime.now() - timedelta(days=30)
-        )
-    with col2:
-        end_date = st.date_input("End Date", datetime.now())
-    
-    # User filter
-    with db.get_session() as session:
-        users = session.query(User).all()
-        usernames = ["All Users"] + [user.username for user in users]
-        selected_user = st.selectbox("Filter by User", usernames)
-        
-        # Get filtered logs
-        query = session.query(AuditLog)
-        
-        # Apply date filter
-        query = query.filter(
-            AuditLog.timestamp >= datetime.combine(start_date, datetime.min.time()),
-            AuditLog.timestamp <= datetime.combine(end_date, datetime.max.time())
-        )
-        
-        # Apply user filter
-        if selected_user != "All Users":
-            user = session.query(User).filter(User.username == selected_user).first()
-            if user:
-                query = query.filter(AuditLog.user_id == user.id)
-        
-        logs = query.order_by(AuditLog.timestamp.desc()).all()
-        
-        if logs:
-            for log in logs:
-                user = session.query(User).get(log.user_id)
-                with st.expander(
-                    f"{log.timestamp.strftime('%Y-%m-%d %H:%M:%S')} - {user.username if user else 'Unknown'}"
-                ):
-                    st.write(f"Action: {log.action}")
-                    st.write("Details:")
-                    st.json(log.details) 
+                            ) 

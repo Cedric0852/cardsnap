@@ -8,7 +8,7 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy import or_
 import pytesseract
 from database.db import db
-from database.models import User, BusinessCard, Company, AuditLog
+from database.models import User, BusinessCard, Company
 from utils.auth import AuthManager, login_required, role_required
 from utils.scanner import Scanner
 from utils.export import Exporter
@@ -134,13 +134,6 @@ def login_user(username: str, password: str) -> bool:
             user_role = user.role
             user_username = user.username
             
-            # Log login
-            log = AuditLog(
-                user_id=user_id,
-                action="login",
-                details={"timestamp": datetime.utcnow().isoformat()}
-            )
-            session.add(log)
             session.commit()
             
             # Set session state after successful commit
@@ -153,17 +146,6 @@ def login_user(username: str, password: str) -> bool:
 
 def logout_user():
     """Clear session state and log out user."""
-    if st.session_state.user_id:
-        with db.get_session() as session:
-            # Log logout
-            log = AuditLog(
-                user_id=st.session_state.user_id,
-                action="logout",
-                details={"timestamp": datetime.utcnow().isoformat()}
-            )
-            session.add(log)
-            session.commit()
-    
     st.session_state.user_id = None
     st.session_state.user_role = None
     st.session_state.username = None
@@ -214,7 +196,7 @@ def main_navigation():
     pages = ["Home", "Card Management"]
     
     if st.session_state.user_role == "Admin":
-        pages.extend(["Company Management", "User Management", "Export Management", "Audit Logs"])
+        pages.extend(["Company Management", "User Management", "Export Management"])
     else:
         pages.extend(["Company View", "Export Management"])
     
@@ -337,10 +319,6 @@ def main():
         render_user_management()
     elif current_page == "Export Management":
         render_export_management()
-    elif current_page == "Audit Logs" and st.session_state.user_role == "Admin":
-        st.title("Audit Logs")
-        # Audit logs content will be implemented in Phase 3
-        st.info("Audit logs will be implemented in the next phase.")
 
 if __name__ == "__main__":
     main()

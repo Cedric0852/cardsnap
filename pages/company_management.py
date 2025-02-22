@@ -110,13 +110,8 @@ def render_add_company_tab():
                 
                 st.success("Company added successfully!")
                 
-                # Offer QR code download
-                st.download_button(
-                    label="Download Company QR Code",
-                    data=qr_image_bytes,
-                    file_name=f"company_qr_{name.lower().replace(' ', '_')}.png",
-                    mime="image/png"
-                )
+                # Display QR code
+                st.image(qr_image_bytes, caption="Company QR Code", use_container_width=True)
                 
             except Exception as e:
                 st.error(f"Error adding company: {str(e)}")
@@ -157,7 +152,7 @@ def render_view_companies_tab():
                     if company.logo_path:
                         try:
                             logo = Image.open(company.logo_path)
-                            st.image(logo, caption="Company Logo", use_column_width=True)
+                            st.image(logo, caption="Company Logo", use_container_width=True)
                         except Exception:
                             st.warning("Logo file not found")
                     
@@ -187,6 +182,22 @@ def render_view_companies_tab():
                             session.commit()
                             st.success("Company deleted successfully!")
                             st.experimental_rerun()
+
+                st.markdown("##### Company QR Code")
+                # Prepare a company data dictionary for QR code generation
+                address = f"{company.street_address}, {company.city}, {company.state} {company.postal_code}, {company.country}"
+                company_data = {
+                    'name': company.name,
+                    'email': company.email,
+                    'phone': company.contact_primary,
+                    'website': company.website,
+                    'address': address.strip(", ")
+                }
+                try:
+                    qr_image_bytes, _ = Scanner.generate_qr_code(company_data)
+                    st.image(qr_image_bytes, caption="Company QR Code", use_container_width=True)
+                except Exception as e:
+                    st.warning(f"Could not generate company QR code: {str(e)}")
 
 def render_search_companies_tab():
     """Render the company search tab."""

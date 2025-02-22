@@ -4,6 +4,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from contextlib import contextmanager
 import logging
 from typing import Optional
+from sqlalchemy import inspect
 
 from .models import Base
 
@@ -32,13 +33,23 @@ class DatabaseManager:
     def init_db(self):
         """Initialize the database, creating all tables."""
         try:
-            # Drop all tables first
-            Base.metadata.drop_all(self.engine)
-            # Create all tables
+            # Create all tables if they don't exist
             Base.metadata.create_all(self.engine)
             logger.info("Database initialized successfully")
         except SQLAlchemyError as e:
             logger.error(f"Error initializing database: {e}")
+            raise
+    
+    def reset_db(self):
+        """Reset the database by dropping all tables and recreating them."""
+        try:
+            # Drop all tables
+            Base.metadata.drop_all(self.engine)
+            # Create all tables
+            Base.metadata.create_all(self.engine)
+            logger.info("Database reset successfully")
+        except SQLAlchemyError as e:
+            logger.error(f"Error resetting database: {e}")
             raise
     
     @contextmanager

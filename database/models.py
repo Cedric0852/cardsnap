@@ -24,7 +24,6 @@ class User(Base):
     # Relationships
     business_cards: Mapped[List["BusinessCard"]] = relationship("BusinessCard", back_populates="created_by_user")
     companies: Mapped[List["Company"]] = relationship("Company", back_populates="created_by_user")
-    audit_logs: Mapped[List["AuditLog"]] = relationship("AuditLog", back_populates="user")
 
 class Company(Base):
     __tablename__ = 'companies'
@@ -89,19 +88,6 @@ class BusinessCard(Base):
     # Relationships
     company: Mapped[Optional["Company"]] = relationship("Company", back_populates="business_cards")
     created_by_user: Mapped["User"] = relationship("User", back_populates="business_cards")
-
-class AuditLog(Base):
-    __tablename__ = 'audit_logs'
-    
-    id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(Integer, ForeignKey('users.id'))
-    action: Mapped[str] = mapped_column(String(50), nullable=False)
-    timestamp: Mapped[datetime] = mapped_column(DateTime, default=func.now())
-    details: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    ip_address: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)  # IPv6 compatible
-    
-    # Relationships
-    user: Mapped["User"] = relationship("User", back_populates="audit_logs")
 
 class ExportLog(Base):
     __tablename__ = 'export_logs'
