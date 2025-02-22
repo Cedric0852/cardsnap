@@ -243,7 +243,7 @@ def render_card_management():
                             "Created At": card.created_at.strftime('%Y-%m-%d %H:%M:%S') if card.created_at else None,
                             "Parsed Data": card.parsed_data
                         }
-                        st.json(card_details)
+                        st.json(card_details) #you can delete it if you want 
                     
                     if card.event_name:
                         st.write(f"**Event:** {card.event_name}")
