@@ -6,7 +6,7 @@ import base64
 import re
 from sqlalchemy_utils import escape_like
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -14,6 +14,16 @@ from sqlalchemy import or_
 import streamlit_ace as st_ace
 from PIL import Image
 import pytesseract
+from database.db import db
+from database.models import User, BusinessCard, Company, AuditLog
+from utils.auth import AuthManager, login_required, role_required
+from utils.scanner import Scanner
+from utils.export import Exporter
+from pages.card_management import render_card_management
+from pages.company_management import render_company_management
+from pages.export_management import render_export_management
+from pages.user_management import render_user_management
+
 API_KEY = st.secrets["key"]
 #database connection 
 # Set up the SQLite database
@@ -116,64 +126,244 @@ def to_excel(df):
     excel_data = output.getvalue()
     return excel_data
 
+# Initialize database
+db.init_db()
 
-# Set the app name and favicon
-app_name = "Cardsnap"
-favicon_emoji = "📇"
-st.set_page_config(page_title=app_name, page_icon=favicon_emoji)
-# Add a navigation bar to switch between pages
-st.sidebar.title("Navigation")
-page = st.sidebar.radio("Go to", ["Home", "Card Snap History"])
-#Home page
-if page == "Home":
-  # Title
-  st.title("Business Card Digitizer ,  CARDSNAP")
+# Page config
+st.set_page_config(
+    page_title="CardSnap",
+    page_icon="📇",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-  # Instructions
-  st.write("Upload or take a picture  of a business card.")
+# Session state initialization
+if 'user_id' not in st.session_state:
+    st.session_state.user_id = None
+if 'user_role' not in st.session_state:
+    st.session_state.user_role = None
+if 'username' not in st.session_state:
+    st.session_state.username = None
 
-  # Capture or upload an image
-  uploaded_file = st.file_uploader("Choose an image file", type=["jpg", "jpeg", "png"])
-
-  # Display the uploaded image and trigger text detection
-  if uploaded_file:
-      image = Image.open(uploaded_file)
-      st.image(image, caption='Uploaded Business Card', use_column_width=True)
-
-      image_bytes = uploaded_file.getvalue()
-      event_name = st.text_input("Event Name (optional)")
-
-      if st.button("Detect Text"):
-            detected_text = detect_text(image_bytes)
-            st.write("Detected Text:")
-            st.markdown(f"```\n{detected_text}\n```")
-            timestamp = datetime.utcnow()
-            save_to_db(event_name, detected_text, timestamp)
-            st.success("Text saved successfully!")
-elif page == "Card Snap History":
-    st.title("Card Snap History")
-    search_keywords = st.text_input("Search", "")
-    if search_keywords:
-        card_snaps = search_card_snaps(search_keywords)
-    else:
-        card_snaps = get_card_snaps()
-
-    for i, card_snap in enumerate(card_snaps):
-        st.subheader(f"{card_snap.event_name if card_snap.event_name else 'No Event Name'} - {card_snap.timestamp.strftime('%Y-%m-%d %H:%M:%S')}")
-        unique_key = f"card_snap_text_area_{i}"
-        st.text_area("Detected Text", value=card_snap.detected_text, height=150, max_chars=None, key=unique_key)
-        delete_button_label = "Delete"
-        if st.button(delete_button_label, key=f"delete_button_{i}"):
-            delete_card_snap(card_snap.id)
-            st.success(f"Deleted entry: {card_snap.event_name if card_snap.event_name else 'No Event Name'} - {card_snap.timestamp.strftime('%Y-%m-%d %H:%M:%S')}")
-
-            st.write("---")
+def login_user(username: str, password: str) -> bool:
+    """Authenticate user and set session state."""
+    user = AuthManager.authenticate_user(username, password)
+    if user:
+        st.session_state.user_id = user.id
+        st.session_state.user_role = user.role
+        st.session_state.username = user.username
         
-    if st.button("Export to Excel"):
-      card_snaps = get_card_snaps()
-      df = card_snaps_to_dataframe(card_snaps)
-      excel_file = to_excel(df)
+        # Log login
+        log = AuditLog(
+            user_id=user.id,
+            action="login",
+            details={"timestamp": datetime.utcnow().isoformat()}
+        )
+        db.add_item(log)
+        return True
+    return False
 
-      b64 = base64.b64encode(excel_file).decode()
-      href = f'<a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" download="card_snap_history.xlsx">Download Card Snap History as Excel</a>'
-      st.markdown(href, unsafe_allow_html=True)
+def logout_user():
+    """Clear session state and log out user."""
+    if st.session_state.user_id:
+        # Log logout
+        log = AuditLog(
+            user_id=st.session_state.user_id,
+            action="logout",
+            details={"timestamp": datetime.utcnow().isoformat()}
+        )
+        db.add_item(log)
+    
+    st.session_state.user_id = None
+    st.session_state.user_role = None
+    st.session_state.username = None
+    st.experimental_rerun()
+
+def login_page():
+    """Render login page."""
+    st.title("Welcome to CardSnap 📇")
+    
+    col1, col2 = st.columns([1, 2])
+    
+    with col1:
+        st.markdown("""
+        ### Login
+        Please enter your credentials to continue.
+        """)
+        
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        
+        if st.button("Login"):
+            if login_user(username, password):
+                st.success("Login successful!")
+                st.experimental_rerun()
+            else:
+                st.error("Invalid username or password")
+    
+    with col2:
+        st.markdown("""
+        ### About CardSnap
+        
+        CardSnap is a modern business card management system that helps you:
+        
+        - 📸 Scan and digitize business cards
+        - 🔍 Extract information using OCR
+        - 📱 Generate and scan QR codes
+        - 🏢 Manage company information
+        - 📊 Export data in multiple formats
+        
+        Get started by logging in with your credentials.
+        """)
+
+def main_navigation():
+    """Render main navigation sidebar."""
+    st.sidebar.title(f"Welcome, {st.session_state.username}!")
+    
+    # Role-specific navigation
+    if st.session_state.user_role == "Admin":
+        page = st.sidebar.radio(
+            "Navigation",
+            ["Home", "Card Management", "Company Management", "User Management", "Export", "Audit Logs"]
+        )
+    elif st.session_state.user_role == "Sales":
+        page = st.sidebar.radio(
+            "Navigation",
+            ["Home", "Card Management", "Company View", "Export"]
+        )
+    else:  # User role
+        page = st.sidebar.radio(
+            "Navigation",
+            ["Home", "Card Management", "Company View", "Export"]
+        )
+    
+    if st.sidebar.button("Logout"):
+        logout_user()
+    
+    return page
+
+def render_dashboard():
+    """Render the dashboard page."""
+    st.title("Dashboard")
+    
+    # Get statistics
+    with db.get_session() as session:
+        # Card statistics
+        if st.session_state.user_role == "Admin":
+            total_cards = session.query(BusinessCard).count()
+            total_companies = session.query(Company).count()
+            total_users = session.query(User).count()
+        else:
+            total_cards = session.query(BusinessCard).filter(
+                BusinessCard.created_by_id == st.session_state.user_id
+            ).count()
+            total_companies = session.query(Company).filter(
+                Company.created_by_id == st.session_state.user_id
+            ).count()
+            total_users = 1
+        
+        # Recent activity
+        recent_cards = session.query(BusinessCard).order_by(
+            BusinessCard.created_at.desc()
+        ).limit(5).all()
+    
+    # Display statistics
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("Total Cards", total_cards)
+    with col2:
+        st.metric("Total Companies", total_companies)
+    if st.session_state.user_role == "Admin":
+        with col3:
+            st.metric("Total Users", total_users)
+    
+    # Display recent activity
+    st.subheader("Recent Activity")
+    for card in recent_cards:
+        with st.expander(f"{card.contact_name} - {card.created_at.strftime('%Y-%m-%d %H:%M:%S')}"):
+            st.write(f"Position: {card.position}")
+            st.write(f"Email: {card.email}")
+            st.write(f"Phone: {card.phone}")
+            if card.company_id:
+                company = session.query(Company).get(card.company_id)
+                if company:
+                    st.write(f"Company: {company.name}")
+
+def render_company_view():
+    """Render the company view page for non-admin users."""
+    st.title("Company Information")
+    
+    with db.get_session() as session:
+        companies = session.query(Company).all()
+        
+        for company in companies:
+            with st.expander(f"{company.name} - {company.industry or 'No Industry'}"):
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.write("Basic Information:")
+                    st.write(f"Email: {company.email}")
+                    st.write(f"Primary Contact: {company.contact_primary}")
+                    st.write(f"Website: {company.website}")
+                    st.write(f"Industry: {company.industry}")
+                    
+                    st.write("\nAddress:")
+                    address = f"{company.street_address}, {company.city}, {company.state} {company.postal_code}, {company.country}"
+                    st.write(address.strip(", "))
+                
+                with col2:
+                    if company.logo_path:
+                        try:
+                            logo = Image.open(company.logo_path)
+                            st.image(logo, caption="Company Logo", use_column_width=True)
+                        except Exception:
+                            st.warning("Logo file not found")
+                    
+                    # Show QR code if available
+                    if company.qr_code_data:
+                        qr_image_bytes, _ = Scanner.generate_qr_code({
+                            'name': company.name,
+                            'email': company.email,
+                            'phone': company.contact_primary,
+                            'website': company.website,
+                            'address': address.strip(", ")
+                        })
+                        st.image(qr_image_bytes, caption="Company QR Code", width=200)
+
+def main():
+    """Main application logic."""
+    # Check if user is logged in
+    if not st.session_state.user_id:
+        login_page()
+        return
+    
+    # Get current page from navigation
+    current_page = main_navigation()
+    
+    # Render selected page
+    if current_page == "Home":
+        render_dashboard()
+    
+    elif current_page == "Card Management":
+        render_card_management()
+    
+    elif current_page == "Company Management" and st.session_state.user_role == "Admin":
+        render_company_management()
+    
+    elif current_page == "Company View":
+        render_company_view()
+    
+    elif current_page == "User Management" and st.session_state.user_role == "Admin":
+        render_user_management()
+    
+    elif current_page == "Export":
+        render_export_management()
+    
+    elif current_page == "Audit Logs" and st.session_state.user_role == "Admin":
+        st.title("Audit Logs")
+        # Audit logs content will be implemented in Phase 3
+        st.info("Audit logs will be implemented in the next phase.")
+
+if __name__ == "__main__":
+    main()
