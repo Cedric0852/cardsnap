@@ -120,10 +120,12 @@ class AuthManager:
                 # Successful login
                 user.failed_login_attempts = 0
                 user.last_login = datetime.utcnow()
+                session.commit()
                 return user
             else:
                 # Failed login
                 user.failed_login_attempts += 1
+                session.commit()
                 return None
     
     @staticmethod

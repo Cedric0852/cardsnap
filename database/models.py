@@ -1,100 +1,115 @@
 from datetime import datetime
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Boolean, ForeignKey, JSON
-from sqlalchemy.orm import relationship, declarative_base
+from sqlalchemy.orm import relationship, declarative_base, Mapped, mapped_column
 from sqlalchemy.sql import func
+from typing import List, Optional
 
 Base = declarative_base()
 
 class User(Base):
     __tablename__ = 'users'
     
-    id = Column(Integer, primary_key=True)
-    username = Column(String(50), unique=True, nullable=False)
-    email = Column(String(120), unique=True, nullable=False)
-    password = Column(String(255), nullable=False)
-    role = Column(String(20), nullable=False)  # Admin/Sales/User
-    created_at = Column(DateTime, default=func.now())
-    last_login = Column(DateTime)
-    is_active = Column(Boolean, default=True)
-    failed_login_attempts = Column(Integer, default=0)
-    last_password_change = Column(DateTime, default=func.now())
-    password_history = Column(JSON)  # Store last 3 password hashes
+    id: Mapped[int] = mapped_column(primary_key=True)
+    username: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
+    email: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
+    password: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(20), nullable=False)  # Admin/Sales/User
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
+    last_login: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    last_password_change: Mapped[datetime] = mapped_column(DateTime, default=func.now())
+    password_history: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     # Relationships
-    business_cards = relationship("BusinessCard", back_populates="created_by_user")
-    companies = relationship("Company", back_populates="created_by_user")
-    audit_logs = relationship("AuditLog", back_populates="user")
+    business_cards: Mapped[List["BusinessCard"]] = relationship("BusinessCard", back_populates="created_by_user")
+    companies: Mapped[List["Company"]] = relationship("Company", back_populates="created_by_user")
+    audit_logs: Mapped[List["AuditLog"]] = relationship("AuditLog", back_populates="user")
 
 class Company(Base):
     __tablename__ = 'companies'
     
-    id = Column(Integer, primary_key=True)
-    name = Column(String(100), nullable=False)
-    contact_primary = Column(String(20))
-    contact_secondary = Column(String(20))
-    email = Column(String(120), nullable=False)
-    street_address = Column(String(255))
-    city = Column(String(100))
-    state = Column(String(100))
-    postal_code = Column(String(20))
-    country = Column(String(100))
-    website = Column(String(255))
-    social_linkedin = Column(String(255))
-    social_twitter = Column(String(255))
-    social_facebook = Column(String(255))
-    qr_code_data = Column(Text)
-    logo_path = Column(String(255))
-    industry = Column(String(100))
-    registration_number = Column(String(50))
-    created_at = Column(DateTime, default=func.now())
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
-    created_by_id = Column(Integer, ForeignKey('users.id'))
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    contact_primary: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    contact_secondary: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    email: Mapped[str] = mapped_column(String(120), nullable=False)
+    street_address: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    city: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    state: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    postal_code: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    country: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    website: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    social_linkedin: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    social_twitter: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    social_facebook: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    qr_code_data: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    logo_path: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    industry: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    registration_number: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
+    created_by_id: Mapped[int] = mapped_column(Integer, ForeignKey('users.id'))
     
     # Relationships
-    created_by_user = relationship("User", back_populates="companies")
-    business_cards = relationship("BusinessCard", back_populates="company")
+    created_by_user: Mapped["User"] = relationship("User", back_populates="companies")
+    business_cards: Mapped[List["BusinessCard"]] = relationship("BusinessCard", back_populates="company")
 
 class BusinessCard(Base):
     __tablename__ = 'business_cards'
     
-    id = Column(Integer, primary_key=True)
-    company_id = Column(Integer, ForeignKey('companies.id'))
-    event_name = Column(String(100))
-    contact_name = Column(String(100))
-    position = Column(String(100))
-    email = Column(String(120))
-    phone = Column(String(20))
-    detected_text = Column(Text)
-    qr_code_data = Column(Text)
-    image_path = Column(String(255))
-    created_at = Column(DateTime, default=func.now())
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
-    created_by_id = Column(Integer, ForeignKey('users.id'))
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey('companies.id'), nullable=True)
+    event_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    contact_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    position: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    email: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    mobile: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    fax: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    website: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    street_address: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    city: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    state: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    postal_code: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    country: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    department: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    social_linkedin: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    social_twitter: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    social_facebook: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    detected_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    parsed_data: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # Store all parsed data
+    qr_code_data: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    image_path: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
+    created_by_id: Mapped[int] = mapped_column(Integer, ForeignKey('users.id'))
     
     # Relationships
-    company = relationship("Company", back_populates="business_cards")
-    created_by_user = relationship("User", back_populates="business_cards")
+    company: Mapped[Optional["Company"]] = relationship("Company", back_populates="business_cards")
+    created_by_user: Mapped["User"] = relationship("User", back_populates="business_cards")
 
 class AuditLog(Base):
     __tablename__ = 'audit_logs'
     
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey('users.id'))
-    action = Column(String(50), nullable=False)
-    timestamp = Column(DateTime, default=func.now())
-    details = Column(JSON)
-    ip_address = Column(String(45))  # IPv6 compatible
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey('users.id'))
+    action: Mapped[str] = mapped_column(String(50), nullable=False)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=func.now())
+    details: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    ip_address: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)  # IPv6 compatible
     
     # Relationships
-    user = relationship("User", back_populates="audit_logs")
+    user: Mapped["User"] = relationship("User", back_populates="audit_logs")
 
 class ExportLog(Base):
     __tablename__ = 'export_logs'
     
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey('users.id'))
-    export_type = Column(String(20), nullable=False)  # Excel, CSV, PDF, vCard, JSON
-    export_date = Column(DateTime, default=func.now())
-    items_exported = Column(Integer)
-    file_path = Column(String(255))
-    status = Column(String(20))  # Success, Failed, In Progress 
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey('users.id'))
+    export_type: Mapped[str] = mapped_column(String(20), nullable=False)  # Excel, CSV, PDF, vCard, JSON
+    export_date: Mapped[datetime] = mapped_column(DateTime, default=func.now())
+    items_exported: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    file_path: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # Success, Failed, In Progress 

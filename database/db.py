@@ -24,14 +24,17 @@ class DatabaseManager:
         if self._initialized:
             return
             
-        self.engine = create_engine('sqlite:///cardsnap.db', echo=True)
-        self.SessionFactory = sessionmaker(bind=self.engine)
+        self.engine = create_engine('sqlite:///cardsnap.db')
+        self.SessionFactory = sessionmaker(bind=self.engine, expire_on_commit=False)
         self.Session = scoped_session(self.SessionFactory)
         self._initialized = True
     
     def init_db(self):
         """Initialize the database, creating all tables."""
         try:
+            # Drop all tables first
+            Base.metadata.drop_all(self.engine)
+            # Create all tables
             Base.metadata.create_all(self.engine)
             logger.info("Database initialized successfully")
         except SQLAlchemyError as e:
@@ -51,6 +54,7 @@ class DatabaseManager:
             raise
         finally:
             session.close()
+            self.Session.remove()
     
     def add_item(self, item):
         """Add a single item to the database."""
@@ -58,6 +62,7 @@ class DatabaseManager:
             try:
                 session.add(item)
                 session.commit()
+                session.refresh(item)
                 return item
             except SQLAlchemyError as e:
                 logger.error(f"Error adding item to database: {e}")
@@ -76,9 +81,10 @@ class DatabaseManager:
         """Update an existing item in the database."""
         with self.get_session() as session:
             try:
-                session.merge(item)
+                merged_item = session.merge(item)
                 session.commit()
-                return item
+                session.refresh(merged_item)
+                return merged_item
             except SQLAlchemyError as e:
                 logger.error(f"Error updating item in database: {e}")
                 raise

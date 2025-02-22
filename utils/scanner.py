@@ -8,7 +8,20 @@ import uuid
 from datetime import datetime
 import re
 
+# Configure pytesseract path
+pytesseract.pytesseract.tesseract_cmd = r'C:\\Program Files\\Tesseract-OCR\\tesseract.exe'
+
 class Scanner:
+    @staticmethod
+    def detect_text(image_bytes: bytes) -> str:
+        """Extract text from image using OCR."""
+        try:
+            image = Image.open(io.BytesIO(image_bytes))
+            text = pytesseract.image_to_string(image, lang='eng')
+            return text
+        except Exception as e:
+            raise Exception(f"Error detecting text: {str(e)}")
+
     @staticmethod
     def extract_text_from_image(image_bytes: bytes) -> tuple[str, dict]:
         """
@@ -16,8 +29,7 @@ class Scanner:
         Returns (raw_text, parsed_info)
         """
         try:
-            image = Image.open(io.BytesIO(image_bytes))
-            raw_text = pytesseract.image_to_string(image, lang='eng')
+            raw_text = Scanner.detect_text(image_bytes)
             
             # Parse the extracted text
             parsed_info = Scanner._parse_business_card_text(raw_text)
@@ -35,14 +47,26 @@ class Scanner:
             'position': None,
             'email': None,
             'phone': None,
+            'mobile': None,
+            'fax': None,
             'company': None,
-            'website': None
+            'website': None,
+            'address': None,
+            'city': None,
+            'state': None,
+            'postal_code': None,
+            'country': None,
+            'department': None,
+            'linkedin': None,
+            'twitter': None,
+            'facebook': None,
+            'notes': None
         }
         
         # Split text into lines and remove empty lines
         lines = [line.strip() for line in text.split('\n') if line.strip()]
         
-        # Extract email
+        # Extract email addresses
         email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
         emails = re.findall(email_pattern, text)
         if emails:
@@ -52,13 +76,43 @@ class Scanner:
         phone_pattern = r'(?:\+?\d{1,3}[-.]?)?\(?\d{3}\)?[-.]?\d{3}[-.]?\d{4}'
         phones = re.findall(phone_pattern, text)
         if phones:
+            # Assume first number is primary phone
             info['phone'] = phones[0]
+            # If there are multiple numbers, assume second is mobile
+            if len(phones) > 1:
+                info['mobile'] = phones[1]
+            # If there are three numbers, assume third is fax
+            if len(phones) > 2:
+                info['fax'] = phones[2]
         
         # Extract website
         website_pattern = r'(?:https?:\/\/)?(?:www\.)?([a-zA-Z0-9-]+(?:\.[a-zA-Z]{2,})+)'
         websites = re.findall(website_pattern, text)
         if websites:
             info['website'] = websites[0]
+        
+        # Extract social media handles
+        social_patterns = {
+            'linkedin': r'(?:linkedin\.com/in/|linkedin:?)([a-zA-Z0-9_-]+)',
+            'twitter': r'(?:twitter\.com/|twitter:?)([a-zA-Z0-9_]+)',
+            'facebook': r'(?:facebook\.com/|facebook:?)([a-zA-Z0-9_.]+)'
+        }
+        for platform, pattern in social_patterns.items():
+            matches = re.findall(pattern, text.lower())
+            if matches:
+                info[platform] = matches[0]
+        
+        # Extract address components
+        address_pattern = r'\b\d+\s+[A-Za-z0-9\s,.-]+\b'
+        addresses = re.findall(address_pattern, text)
+        if addresses:
+            info['address'] = addresses[0]
+        
+        # Try to identify postal code
+        postal_pattern = r'\b\d{5}(?:-\d{4})?\b'
+        postal_codes = re.findall(postal_pattern, text)
+        if postal_codes:
+            info['postal_code'] = postal_codes[0]
         
         # Try to identify name and position
         # Usually, name is in larger font and appears first
@@ -74,6 +128,14 @@ class Scanner:
             lower_line = line.lower()
             if any(indicator in lower_line for indicator in company_indicators):
                 info['company'] = line
+                break
+        
+        # Try to identify department
+        department_indicators = ['department', 'dept', 'division', 'team']
+        for line in lines:
+            lower_line = line.lower()
+            if any(indicator in lower_line for indicator in department_indicators):
+                info['department'] = line
                 break
         
         return info

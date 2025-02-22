@@ -1,18 +1,11 @@
 from PIL import Image
 import streamlit as st
-import requests
 import io
-import base64
-import re
-from sqlalchemy_utils import escape_like
 import pandas as pd
 from datetime import datetime, timedelta
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy import or_
-import streamlit_ace as st_ace
-from PIL import Image
 import pytesseract
 from database.db import db
 from database.models import User, BusinessCard, Company, AuditLog
@@ -24,7 +17,9 @@ from pages.company_management import render_company_management
 from pages.export_management import render_export_management
 from pages.user_management import render_user_management
 
-API_KEY = st.secrets["key"]
+# Configure pytesseract path (you'll need to set this to your Tesseract installation path)
+pytesseract.pytesseract.tesseract_cmd = r'C:\\Program Files\\Tesseract-OCR\\tesseract.exe'
+
 #database connection 
 # Set up the SQLite database
 engine = create_engine("sqlite:///cardsnap.db")
@@ -40,33 +35,6 @@ class CardSnap(Base):
 Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 session = Session()
-#TExt detection function
-
-# def detect_text(image):
-#     url = "https://vision.googleapis.com/v1/images:annotate?key=" + API_KEY
-#     headers = {'Content-Type': 'application/json'}
-#     image_content = base64.b64encode(image).decode('UTF-8')
-#     data = {
-#       "requests": [
-#         {
-#           "image": {
-#             "content": image_content
-#           },
-#           "features": [
-#             {
-#               "type": "DOCUMENT_TEXT_DETECTION"
-#             }
-#           ]
-#         }
-#       ]
-#     }
-#     response = requests.post(url, headers=headers, json=data)
-#     return response.json()
-# Add a function to save detected text to the database
-
-
-# Configure pytesseract path if needed (especially on Windows)
-pytesseract.pytesseract.tesseract_cmd = r'C:\\Program Files\\Tesseract-OCR\\tesseract.exe'
 
 def detect_text(image):
     # Convert image bytes to an image object
@@ -74,6 +42,7 @@ def detect_text(image):
     # Use Tesseract to do OCR on the image
     text = pytesseract.image_to_string(image, lang='eng')
     return text
+
 def save_to_db(event_name, detected_text, timestamp):
     card_snap = CardSnap(event_name=event_name, detected_text=detected_text, timestamp=timestamp)
     session.add(card_snap)
@@ -82,12 +51,14 @@ def save_to_db(event_name, detected_text, timestamp):
 # Add a function to retrieve records from the database
 def get_card_snaps():
     return session.query(CardSnap).order_by(CardSnap.timestamp.desc()).all()
+
 # Add this function to delete a card_snap entry by ID
 def delete_card_snap(card_snap_id):
     card_snap = session.query(CardSnap).filter(CardSnap.id == card_snap_id).first()
     if card_snap:
         session.delete(card_snap)
         session.commit()
+
 # Add a function to filter records based on search keywords
 def search_card_snaps(search_keywords):
     keywords = f"%{search_keywords}%"
@@ -107,6 +78,7 @@ def search_card_snaps(search_keywords):
         )
 
     return session.query(CardSnap).filter(search_condition).all()
+
 # export function 
 # Add a function to convert the database records to a DataFrame
 def card_snaps_to_dataframe(card_snaps):
@@ -147,37 +119,55 @@ if 'username' not in st.session_state:
 
 def login_user(username: str, password: str) -> bool:
     """Authenticate user and set session state."""
-    user = AuthManager.authenticate_user(username, password)
-    if user:
-        st.session_state.user_id = user.id
-        st.session_state.user_role = user.role
-        st.session_state.username = user.username
-        
-        # Log login
-        log = AuditLog(
-            user_id=user.id,
-            action="login",
-            details={"timestamp": datetime.utcnow().isoformat()}
-        )
-        db.add_item(log)
-        return True
+    with db.get_session() as session:
+        user = session.query(User).filter(User.username == username).first()
+        if not user:
+            return False
+            
+        if AuthManager.verify_password(password, user.password.encode()):
+            # Update user login info
+            user.failed_login_attempts = 0
+            user.last_login = datetime.utcnow()
+            
+            # Get user info before commit
+            user_id = user.id
+            user_role = user.role
+            user_username = user.username
+            
+            # Log login
+            log = AuditLog(
+                user_id=user_id,
+                action="login",
+                details={"timestamp": datetime.utcnow().isoformat()}
+            )
+            session.add(log)
+            session.commit()
+            
+            # Set session state after successful commit
+            st.session_state.user_id = user_id
+            st.session_state.user_role = user_role
+            st.session_state.username = user_username
+            
+            return True
     return False
 
 def logout_user():
     """Clear session state and log out user."""
     if st.session_state.user_id:
-        # Log logout
-        log = AuditLog(
-            user_id=st.session_state.user_id,
-            action="logout",
-            details={"timestamp": datetime.utcnow().isoformat()}
-        )
-        db.add_item(log)
+        with db.get_session() as session:
+            # Log logout
+            log = AuditLog(
+                user_id=st.session_state.user_id,
+                action="logout",
+                details={"timestamp": datetime.utcnow().isoformat()}
+            )
+            session.add(log)
+            session.commit()
     
     st.session_state.user_id = None
     st.session_state.user_role = None
     st.session_state.username = None
-    st.experimental_rerun()
+    st.rerun()
 
 def login_page():
     """Render login page."""
@@ -197,7 +187,7 @@ def login_page():
         if st.button("Login"):
             if login_user(username, password):
                 st.success("Login successful!")
-                st.experimental_rerun()
+                st.rerun()
             else:
                 st.error("Invalid username or password")
     
@@ -220,22 +210,15 @@ def main_navigation():
     """Render main navigation sidebar."""
     st.sidebar.title(f"Welcome, {st.session_state.username}!")
     
-    # Role-specific navigation
+    # Define pages based on user role
+    pages = ["Home", "Card Management"]
+    
     if st.session_state.user_role == "Admin":
-        page = st.sidebar.radio(
-            "Navigation",
-            ["Home", "Card Management", "Company Management", "User Management", "Export", "Audit Logs"]
-        )
-    elif st.session_state.user_role == "Sales":
-        page = st.sidebar.radio(
-            "Navigation",
-            ["Home", "Card Management", "Company View", "Export"]
-        )
-    else:  # User role
-        page = st.sidebar.radio(
-            "Navigation",
-            ["Home", "Card Management", "Company View", "Export"]
-        )
+        pages.extend(["Company Management", "User Management", "Export Management", "Audit Logs"])
+    else:
+        pages.extend(["Company View", "Export Management"])
+    
+    page = st.sidebar.selectbox("Navigation", pages)
     
     if st.sidebar.button("Logout"):
         logout_user()
@@ -344,22 +327,16 @@ def main():
     # Render selected page
     if current_page == "Home":
         render_dashboard()
-    
     elif current_page == "Card Management":
         render_card_management()
-    
     elif current_page == "Company Management" and st.session_state.user_role == "Admin":
         render_company_management()
-    
-    elif current_page == "Company View":
+    elif current_page == "Company View" and st.session_state.user_role != "Admin":
         render_company_view()
-    
     elif current_page == "User Management" and st.session_state.user_role == "Admin":
         render_user_management()
-    
-    elif current_page == "Export":
+    elif current_page == "Export Management":
         render_export_management()
-    
     elif current_page == "Audit Logs" and st.session_state.user_role == "Admin":
         st.title("Audit Logs")
         # Audit logs content will be implemented in Phase 3
